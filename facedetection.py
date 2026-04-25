@@ -1,10 +1,7 @@
-# live_face_rgb.py
-
 import streamlit as st
 import cv2
 import numpy as np
-from PIL import Image
-import time
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
 
 st.set_page_config(layout="wide")
 st.title("🎥 Live Face Detection + RGB Effects")
@@ -17,69 +14,56 @@ effect = st.sidebar.selectbox(
     ["Normal", "Red", "Green", "Blue", "Random RGB"]
 )
 
-# -------- LOAD MODEL --------
-@st.cache_resource
-def load_model():
-    return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+# -------- WEBRTC CONFIG --------
+RTC_CONFIGURATION = RTCConfiguration({
+    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+})
 
-face_cascade = load_model()
+# -------- FACE DETECTOR CLASS --------
+class FaceRGB(VideoTransformerBase):
 
-# -------- FUNCTION --------
-def apply_effect(frame, effect):
+    def __init__(self):
+        self.face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
 
-    if effect == "Red":
-        frame[:, :, 1] = 0
-        frame[:, :, 2] = 0
+    def apply_effect(self, frame):
 
-    elif effect == "Green":
-        frame[:, :, 0] = 0
-        frame[:, :, 2] = 0
+        if effect == "Red":
+            frame[:, :, 1] = 0
+            frame[:, :, 2] = 0
 
-    elif effect == "Blue":
-        frame[:, :, 0] = 0
-        frame[:, :, 1] = 0
+        elif effect == "Green":
+            frame[:, :, 0] = 0
+            frame[:, :, 2] = 0
 
-    elif effect == "Random RGB":
-        frame = np.random.randint(0, 255, frame.shape, dtype=np.uint8)
+        elif effect == "Blue":
+            frame[:, :, 0] = 0
+            frame[:, :, 1] = 0
 
-    return frame
+        elif effect == "Random RGB":
+            frame = np.random.randint(0, 255, frame.shape, dtype=np.uint8)
 
-def detect_faces(frame):
+        return frame
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
 
-    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+        # Apply RGB effect
+        img = self.apply_effect(img)
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        # Face detection
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(gray, 1.1, 5)
 
-    return frame, faces
+        for (x, y, w, h) in faces:
+            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
-# -------- LIVE CAMERA --------
-run = st.checkbox("▶️ Start Camera")
+        return img
 
-FRAME_WINDOW = st.image([])
-
-cap = cv2.VideoCapture(0)
-
-while run:
-    ret, frame = cap.read()
-
-    if not ret:
-        st.error("Camera not working")
-        break
-
-    # Apply RGB effect
-    frame = apply_effect(frame, effect)
-
-    # Detect faces
-    frame, faces = detect_faces(frame)
-
-    # Convert BGR → RGB for display
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    FRAME_WINDOW.image(frame)
-
-    time.sleep(0.03)
-
-cap.release()
+# -------- START STREAM --------
+webrtc_streamer(
+    key="face-rgb",
+    video_transformer_factory=FaceRGB,
+    rtc_configuration=RTC_CONFIGURATION
+)
