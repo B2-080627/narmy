@@ -1,19 +1,23 @@
-# facedetection.py
+# live_face_rgb.py
 
 import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
+import time
 
 st.set_page_config(layout="wide")
-st.title("😎 Face Detection App (Pro)")
+st.title("🎥 Live Face Detection + RGB Effects")
 
 # -------- SIDEBAR --------
 st.sidebar.title("⚙️ Settings")
 
-mode = st.sidebar.radio("Select Mode", ["Upload Image", "Use Camera"])
+effect = st.sidebar.selectbox(
+    "Select RGB Effect",
+    ["Normal", "Red", "Green", "Blue", "Random RGB"]
+)
 
-# Load Haar Cascade
+# -------- LOAD MODEL --------
 @st.cache_resource
 def load_model():
     return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -21,64 +25,61 @@ def load_model():
 face_cascade = load_model()
 
 # -------- FUNCTION --------
-def detect_faces(img):
+def apply_effect(frame, effect):
 
-    if img is None or img.size == 0:
-        return None, []
+    if effect == "Red":
+        frame[:, :, 1] = 0
+        frame[:, :, 2] = 0
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    elif effect == "Green":
+        frame[:, :, 0] = 0
+        frame[:, :, 2] = 0
 
-    faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(30, 30)
-    )
+    elif effect == "Blue":
+        frame[:, :, 0] = 0
+        frame[:, :, 1] = 0
+
+    elif effect == "Random RGB":
+        frame = np.random.randint(0, 255, frame.shape, dtype=np.uint8)
+
+    return frame
+
+def detect_faces(frame):
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
 
     for (x, y, w, h) in faces:
-        cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
-    return img, faces
+    return frame, faces
 
-# -------- IMAGE UPLOAD --------
-if mode == "Upload Image":
+# -------- LIVE CAMERA --------
+run = st.checkbox("▶️ Start Camera")
 
-    uploaded_file = st.file_uploader("📤 Upload Image", type=["jpg", "png", "jpeg"])
+FRAME_WINDOW = st.image([])
 
-    if uploaded_file is not None:
+cap = cv2.VideoCapture(0)
 
-        image = Image.open(uploaded_file)
-        img = np.array(image)
+while run:
+    ret, frame = cap.read()
 
-        # Convert RGB → BGR for OpenCV
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    if not ret:
+        st.error("Camera not working")
+        break
 
-        output, faces = detect_faces(img)
+    # Apply RGB effect
+    frame = apply_effect(frame, effect)
 
-        if output is not None:
-            st.image(output, channels="BGR", caption=f"Detected Faces: {len(faces)}")
+    # Detect faces
+    frame, faces = detect_faces(frame)
 
-# -------- CAMERA --------
-elif mode == "Use Camera":
+    # Convert BGR → RGB for display
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    picture = st.camera_input("📷 Take a picture")
+    FRAME_WINDOW.image(frame)
 
-    if picture is not None:
+    time.sleep(0.03)
 
-        image = Image.open(picture)
-        img = np.array(image)
-
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-        output, faces = detect_faces(img)
-
-        if output is not None:
-            st.image(output, channels="BGR", caption=f"Detected Faces: {len(faces)}")
-
-# -------- INFO --------
-with st.expander("ℹ️ About"):
-    st.write("""
-    - Uses Haar Cascade (fast & lightweight)
-    - Works on mobile 📱
-    - Runs fully in browser (Streamlit)
-    """)
+cap.release()
