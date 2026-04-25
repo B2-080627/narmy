@@ -1,50 +1,37 @@
 import streamlit as st
 import cv2
 import numpy as np
-import urllib.request
 import os
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
 
 st.set_page_config(layout="wide")
-st.title("🎥 Live Age Detection (No File Issues)")
+st.title("🎥 Live Age Detection (Local Models)")
 
-# -------- SAFE DOWNLOAD FUNCTION --------
-def download_file(url, filename):
-    if not os.path.exists(filename):
-        try:
-            st.write(f"⬇️ Downloading {filename}...")
-            urllib.request.urlretrieve(url, filename)
-            st.success(f"✅ {filename} downloaded")
-        except Exception as e:
-            st.error(f"❌ Failed to download {filename}")
-            st.stop()
+# -------- FILE PATH SETUP --------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# -------- DOWNLOAD MODELS (SAFE URLs) --------
-download_file(
-    "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
-    "deploy.prototxt"
-)
+FACE_PROTO = os.path.join(BASE_DIR, "deploy.prototxt")
+FACE_MODEL = os.path.join(BASE_DIR, "res10_300x300_ssd_iter_140000.caffemodel")
+AGE_PROTO = os.path.join(BASE_DIR, "age_deploy.prototxt")
+AGE_MODEL = os.path.join(BASE_DIR, "age_net.caffemodel")
 
-download_file(
-    "https://raw.githubusercontent.com/opencv/opencv_3rdparty/master/dnn_models/res10_300x300_ssd_iter_140000.caffemodel",
-    "face.caffemodel"
-)
+# -------- CHECK FILES --------
+missing_files = []
+for f in [FACE_PROTO, FACE_MODEL, AGE_PROTO, AGE_MODEL]:
+    if not os.path.exists(f):
+        missing_files.append(f)
 
-download_file(
-    "https://raw.githubusercontent.com/spmallick/learnopencv/master/AgeGender/age_deploy.prototxt",
-    "age.prototxt"
-)
-
-download_file(
-    "https://raw.githubusercontent.com/spmallick/learnopencv/master/AgeGender/age_net.caffemodel",
-    "age.caffemodel"
-)
+if missing_files:
+    st.error("❌ Missing files:")
+    for f in missing_files:
+        st.write(f)
+    st.stop()
 
 # -------- LOAD MODELS --------
 @st.cache_resource
 def load_models():
-    face_net = cv2.dnn.readNetFromCaffe("deploy.prototxt", "face.caffemodel")
-    age_net = cv2.dnn.readNetFromCaffe("age.prototxt", "age.caffemodel")
+    face_net = cv2.dnn.readNetFromCaffe(FACE_PROTO, FACE_MODEL)
+    age_net = cv2.dnn.readNetFromCaffe(AGE_PROTO, AGE_MODEL)
     return face_net, age_net
 
 face_net, age_net = load_models()
