@@ -1,39 +1,50 @@
 import streamlit as st
 import cv2
 import numpy as np
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
+import urllib.request
 import os
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
 
 st.set_page_config(layout="wide")
-st.title("🎥 Live Age Detection App")
+st.title("🎥 Live Age Detection (No File Issues)")
 
-# -------- CHECK FILES EXIST --------
-required_files = [
-    "deploy.prototxt",
-    "res10_300x300_ssd_iter_140000.caffemodel",
-    "age_deploy.prototxt",
-    "age_net.caffemodel"
-]
+# -------- SAFE DOWNLOAD FUNCTION --------
+def download_file(url, filename):
+    if not os.path.exists(filename):
+        try:
+            st.write(f"⬇️ Downloading {filename}...")
+            urllib.request.urlretrieve(url, filename)
+            st.success(f"✅ {filename} downloaded")
+        except Exception as e:
+            st.error(f"❌ Failed to download {filename}")
+            st.stop()
 
-missing = [f for f in required_files if not os.path.exists(f)]
+# -------- DOWNLOAD MODELS (SAFE URLs) --------
+download_file(
+    "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
+    "deploy.prototxt"
+)
 
-if missing:
-    st.error(f"❌ Missing files: {missing}")
-    st.stop()
+download_file(
+    "https://raw.githubusercontent.com/opencv/opencv_3rdparty/master/dnn_models/res10_300x300_ssd_iter_140000.caffemodel",
+    "face.caffemodel"
+)
+
+download_file(
+    "https://raw.githubusercontent.com/spmallick/learnopencv/master/AgeGender/age_deploy.prototxt",
+    "age.prototxt"
+)
+
+download_file(
+    "https://raw.githubusercontent.com/spmallick/learnopencv/master/AgeGender/age_net.caffemodel",
+    "age.caffemodel"
+)
 
 # -------- LOAD MODELS --------
 @st.cache_resource
 def load_models():
-    face_net = cv2.dnn.readNetFromCaffe(
-        "deploy.prototxt",
-        "res10_300x300_ssd_iter_140000.caffemodel"
-    )
-
-    age_net = cv2.dnn.readNetFromCaffe(
-        "age_deploy.prototxt",
-        "age_net.caffemodel"
-    )
-
+    face_net = cv2.dnn.readNetFromCaffe("deploy.prototxt", "face.caffemodel")
+    age_net = cv2.dnn.readNetFromCaffe("age.prototxt", "age.caffemodel")
     return face_net, age_net
 
 face_net, age_net = load_models()
@@ -64,7 +75,7 @@ class AgeDetector(VideoTransformerBase):
         try:
             detections = face_net.forward()
         except:
-            return img  # prevent crash
+            return img
 
         for i in range(detections.shape[2]):
 
@@ -75,7 +86,7 @@ class AgeDetector(VideoTransformerBase):
                 box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                 x1, y1, x2, y2 = box.astype(int)
 
-                # 🔥 SAFE BOUNDARY FIX
+                # SAFE BOUNDS
                 x1, y1 = max(0, x1), max(0, y1)
                 x2, y2 = min(w, x2), min(h, y2)
 
@@ -99,7 +110,6 @@ class AgeDetector(VideoTransformerBase):
 
                 age = AGE_LIST[preds[0].argmax()]
 
-                # Draw box + label
                 cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(
                     img,
